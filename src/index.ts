@@ -48,12 +48,12 @@ function retrieveChallenge(
     throw new Error('invalid challenge encapsulation');
   }
 
-  const { difficulty, seed } = challengeHeader;
+  const { difficulty, seed, ...otherProps } = challengeHeader;
   if (!Number.isInteger(difficulty) || !seed) {
     throw new Error('invalid challenge scheme, missing properties');
   }
 
-  return { seed: Buffer.from(seed, 'base64').toString('ascii'), difficulty };
+  return { seed: Buffer.from(seed, 'base64').toString('ascii'), difficulty, ...otherProps };
 }
 
 async function middleware(
@@ -74,10 +74,10 @@ async function middleware(
       const response = await opts.solver(challenge);
       req.headers = {
         ...req.headers,
-        challenge: JSON.stringify({
+        [opts.intercept.header]: JSON.stringify({
+          ...challenge,
           response: Buffer.from(response, 'ascii').toString('base64'),
-          seed: Buffer.from(challenge.seed).toString('base64'),
-          difficulty: challenge.difficulty,
+          seed: Buffer.from(seed).toString('base64'),
         }),
       };
       return middleware(next, req, opts);
