@@ -37,7 +37,7 @@ function retrieveChallenge(
     return false;
   }
 
-  const challengeType = response.headers[header];
+  const challengeType = response.headers.get(header);
 
   if (!challengeType) {
     return false;
@@ -48,12 +48,12 @@ function retrieveChallenge(
     throw new Error('invalid challenge encapsulation');
   }
 
-  const { difficulty, seed, ...otherProps } = challengeHeader;
+  const { difficulty, seed } = challengeHeader;
   if (!Number.isInteger(difficulty) || !seed) {
     throw new Error('invalid challenge scheme, missing properties');
   }
 
-  return { seed: Buffer.from(seed, 'base64').toString('ascii'), difficulty, ...otherProps };
+  return challengeHeader;
 }
 
 async function middleware(
@@ -61,30 +61,30 @@ async function middleware(
   req: RRNLRequestObject,
   opts: Options,
 ): Promise<RRNLResponseObject> {
-  try {
-    return next(req);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (e: any) {
+  return next(req).catch(e => {
     if (!e) {
       throw e;
     }
 
     const challenge = retrieveChallenge(opts, e.fetchResponse);
     if (challenge) {
-      const response = await opts.solver(challenge);
-      req.headers = {
-        ...req.headers,
-        [opts.intercept.header]: JSON.stringify({
-          ...challenge,
-          response: Buffer.from(response, 'ascii').toString('base64'),
-          seed: Buffer.from(seed).toString('base64'),
-        }),
-      };
-      return middleware(next, req, opts);
+      return opts.solver({
+        seed: Buffer.from(challenge.seed, 'base64').toString('ascii'),
+        difficulty: challenge.difficulty,
+      }).then(response => {
+        req.headers = {
+          ...req.headers,
+          [opts.intercept.header]: JSON.stringify({
+            ...challenge,
+            response: Buffer.from(response, 'ascii').toString('base64'),
+          }),
+        };
+        return middleware(next, req, opts);
+      });
     }
 
     throw e;
-  }
+  });
 }
 
 type JurischainOptions = Partial<Omit<Options, 'solver'>>
